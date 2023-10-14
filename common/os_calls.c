@@ -150,7 +150,7 @@ g_mk_socket_path(void)
                     "g_mk_socket_path: g_create_path(%s) failed",
                     XRDP_SOCKET_PATH);
 
-		        LOG(LOG_LEVEL_TRACE, "g_mk_socket_path() returned 1");
+                LOG(LOG_LEVEL_TRACE, "g_mk_socket_path() returned 1");
                 return 1;
             }
         }
@@ -632,7 +632,6 @@ g_sck_get_peer_cred(int sck, int *pid, int *uid, int *gid)
     if (getsockopt(sck, SOL_LOCAL, LOCAL_PEERCRED, &xucred, &xucred_length))
     {
         LOG(LOG_LEVEL_ERROR, "getsockopt() failed: %s", strerror(errno));
-        LOG_DEVEL(LOG_LEVEL_TRACE, "g_sck_get_peer_cred() returned 1");
         return 1;
     }
     if (pid != 0)
@@ -652,16 +651,15 @@ g_sck_get_peer_cred(int sck, int *pid, int *uid, int *gid)
     return 0;
 #elif defined(LOCAL_PEEREID)
     /* Net BSD */
-    #ifndef SOL_LOCAL
-       #define SOL_LOCAL 0
-    #endif
+#ifndef SOL_LOCAL
+#define SOL_LOCAL 0
+#endif
     struct unpcbid xucred;
     unsigned int xucred_length;
     xucred_length = sizeof(xucred);
     if (getsockopt(sck, SOL_LOCAL, LOCAL_PEEREID, &xucred, &xucred_length))
     {
         LOG(LOG_LEVEL_ERROR, "getsockopt() failed: %s", strerror(errno));
-        LOG_DEVEL(LOG_LEVEL_TRACE, "g_sck_get_peer_cred() returned 1");
         return 1;
     }
 
@@ -682,13 +680,12 @@ g_sck_get_peer_cred(int sck, int *pid, int *uid, int *gid)
     return 0;
 #elif defined(__sun)
     /* Solaris, OpenIndiana */
-    ucred_t* xucred = NULL;
+    ucred_t *xucred = NULL;
 
-    if(getpeerucred(sck, &xucred))
+    if (getpeerucred(sck, &xucred))
     {
         LOG(LOG_LEVEL_ERROR, "getsockopt() failed: %s", strerror(errno));
-        LOG_DEVEL(LOG_LEVEL_TRACE, "g_sck_get_peer_cred() returned 1");   
-        return 1;  
+        return 1;
     }
 
     if (pid != 0)
@@ -709,7 +706,6 @@ g_sck_get_peer_cred(int sck, int *pid, int *uid, int *gid)
     return 0;
 #else
     LOG(LOG_LEVEL_ERROR, "g_sck_get_peer_cred() has no implementation.");
-    LOG_DEVEL(LOG_LEVEL_TRACE, "g_sck_get_peer_cred() returned 1");
     return 1;
 #endif
 }
@@ -1408,25 +1404,15 @@ g_sleep(int msecs)
 {
 #if defined(_WIN32)
     Sleep(msecs);
-    //On NetBSD usleep can not be > 1000000, so use sleep instead.
-#elif defined(__NetBSD__)
-    if( msecs >= 1000 )
-    {
-        int secs = msecs / 1000;
-        int remainder = msecs % 1000; 
-       
-        if( secs != 0 ) 
-	{
-	    sleep(msecs / 1000);
-        }
-
-        if( remainder != 0 )
-        {
-	    usleep(remainder * 1000);
-        } 
-    }
 #else
-    usleep(msecs * 1000); 
+    struct timespec tv;
+    tv.tv_sec = msecs / 1000;
+    tv.tv_nsec = ( msecs % 1000 ) * 1000000;
+    if ( nanosleep(&tv, NULL) == -1 )
+    {
+        LOG(LOG_LEVEL_ERROR, "nanosleep returned error %s", g_get_strerror());
+    }
+
 #endif
 }
 
@@ -3024,7 +3010,7 @@ void
 g_signal_child_stop(void (*func)(int))
 {
 #if defined(_WIN32)
-    return; 
+    return;
 #else
     signal(SIGCHLD, func);
 #endif
@@ -3153,7 +3139,7 @@ g_initgroups(const char *username)
         error = initgroups(username, gid);
     }
 
-     LOG_DEVEL(LOG_LEVEL_TRACE, "g_initgroups() returned %d", error);   
+    LOG_DEVEL(LOG_LEVEL_TRACE, "g_initgroups() returned %d", error);
     return error;
 #endif
 }
@@ -3320,22 +3306,24 @@ g_waitpid(int pid, int *stat_loc, int options)
 
 again:
     rv = waitpid(pid, stat_loc, options);
-    //retry EINTR.
-    if( rv == -1 && errno == EINTR )
+#if defined(__NetBSD__) || defined(__sun)
+    //Retry EINTR for NetBSD and OpenIndiana.
+    if ( rv == -1 && errno == EINTR )
     {
         goto again;
     }
+#endif
 
-    if( rv == -1 ) 
+    if ( rv == -1 )
     {
-	if( errno == ECHILD )
-	{
-	    LOG(LOG_LEVEL_INFO, "waitpid returned %s", g_get_strerror());
-	}
-	else
+        if ( errno == ECHILD )
         {
-	    LOG(LOG_LEVEL_ERROR, "waitpid returned %s", g_get_strerror());
-	}
+            LOG(LOG_LEVEL_INFO, "waitpid returned %s", g_get_strerror());
+        }
+        else
+        {
+            LOG(LOG_LEVEL_ERROR, "waitpid returned %s", g_get_strerror());
+        }
     }
 
     return rv;
@@ -3417,7 +3405,7 @@ g_clearenv(void)
     environ = 0;
 #endif
 #endif
-   LOG_DEVEL(LOG_LEVEL_TRACE, "--g_clearenv()");
+    LOG_DEVEL(LOG_LEVEL_TRACE, "--g_clearenv()");
 }
 
 /*****************************************************************************/
@@ -3535,10 +3523,14 @@ g_getuser_info_by_name(const char *username, int *uid, int *gid,
 
             if (gecos != 0)
             {
-	            if( pwd_1->pw_gecos == NULL )
-		            *gecos = g_strdup("");
-	            else
-		            *gecos = g_strdup(pwd_1->pw_gecos);
+                if ( pwd_1->pw_gecos == NULL )
+                {
+                    *gecos = g_strdup("");
+                }
+                else
+                {
+                    *gecos = g_strdup(pwd_1->pw_gecos);
+                }
             }
         }
     }
@@ -3586,10 +3578,14 @@ g_getuser_info_by_uid(int uid, char **username, int *gid,
 
         if (gecos != 0)
         {
-	        if( pwd_1->pw_gecos == NULL )
-		        *gecos = g_strdup("");
-	        else
-		        *gecos = g_strdup(pwd_1->pw_gecos);
+            if ( pwd_1->pw_gecos == NULL )
+            {
+                *gecos = g_strdup("");
+            }
+            else
+            {
+                *gecos = g_strdup(pwd_1->pw_gecos);
+            }
         }
 
         return 0;

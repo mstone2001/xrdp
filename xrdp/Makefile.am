@@ -112,7 +112,7 @@ dist_xrdppkgdata_DATA = \
   cursor1.cur
 
 if MACOS
-# must be tab below. Common out Xorg and Xvnc since they don't work on MacOs. 
+# must be tab below. Common out Xorg and Xvnc since they don't work on MacOs.
 install-data-hook:
 	sed -i '' '235,249s/^/;/g' $(DESTDIR)$(sysconfdir)/xrdp/xrdp.ini
 endif
